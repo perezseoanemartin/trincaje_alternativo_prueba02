@@ -6,7 +6,7 @@ import pandas as pd
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Trincaje Pro Final", page_icon="⚓", layout="wide")
-st.title("⚓ Calculadora de Trincaje (Corrección Definitiva Brazo E)")
+st.title("⚓ Calculadora de Trincaje Avanzado")
 
 # CONSTANTES
 NOMBRE_HOJA = "CALCULO"  
