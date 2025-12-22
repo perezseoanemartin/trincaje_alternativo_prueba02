@@ -6,13 +6,13 @@ import pandas as pd
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Trincaje Pro Final", page_icon="⚓", layout="wide")
-st.title("⚓ Calculadora de Trincaje (Configuración Individual)")
+st.title("⚓ Calculadora de Trincaje (Fórmula Corregida)")
 
 # CONSTANTES
 NOMBRE_HOJA = "CALCULO"  
 ARCHIVO_EXCEL = "trincaje_alternativo_prueba02.xlsx"
 
-# FACTORES DE MATERIAL
+# FACTORES DE MATERIAL EXACTOS
 FACTORES_MATERIAL = {
     "Grillete/Tensor": 0.5,
     "Cabo Fibra": 0.33,
@@ -69,18 +69,18 @@ with st.expander("🚢 1. Datos del Buque y Carga", expanded=True):
     e_brazo_br = c_b2.number_input("Brazo Estab. Br (E70)", value=0.0)
     e_brazo_er = c_b3.number_input("Brazo Estab. Er (E71)", value=0.0)
 
-# --- 3. CONFIGURACIÓN DE TRINCAS (INDIVIDUAL) ---
+# --- 3. CONFIGURACIÓN DE TRINCAS ---
 st.subheader("⛓️ 3. Configuración de Trincas")
 
 # Factor de seguridad global editable
 col_fs, _ = st.columns([1, 3])
-FS_GLOBAL = col_fs.number_input("Factor de Seguridad (Divisor)", value=1.35, step=0.05)
+FS_GLOBAL = col_fs.number_input("Factor de Seguridad (Divisor Final)", value=1.35, step=0.05)
 
 tab_stbd, tab_port = st.tabs(["Estribor (Starboard)", "Babor (Portside)"])
 
 # Función para generar la fila de inputs y calcular D al vuelo
 def fila_trinca_completa(i, lado, fila_excel):
-    # Layout más ancho para acomodar los selectores
+    # Layout ancho
     c_mat, c_val, c_uni, c_res, c_geo1, c_geo2, c_geo3, c_dir = st.columns([2, 1.2, 0.8, 1, 1, 1, 1, 1])
     
     # 1. Material
@@ -93,23 +93,26 @@ def fila_trinca_completa(i, lado, fila_excel):
     # 3. Unidad
     unidad = c_uni.selectbox("Uni", ["Tm", "KN"], key=f"{lado}_uni_{fila_excel}", label_visibility="collapsed")
     
-    # --- CÁLCULO DE PYTHON ---
-    # Paso A: Conversión a KN
-    fuerza_kn = valor_input * 9.8 if unidad == "Tm" else valor_input
+    # --- CÁLCULO DE PYTHON CORREGIDO ---
+    # Paso 1: Conversión de unidades (9.81 exacto)
+    if unidad == "Tm":
+        val_paso1 = valor_input * 9.81
+    else:
+        val_paso1 = valor_input * 1.0
     
-    # Paso B: Aplicar factor material
-    resistencia_material = fuerza_kn * factor_mat
+    # Paso 2: Aplicar factor del material
+    val_paso2 = val_paso1 * factor_mat
     
-    # Paso C: Dividir por Factor Seguridad y Truncar/Redondear
+    # Paso 3: Dividir por Factor de Seguridad (FS)
     if FS_GLOBAL > 0:
-        cs_final_d = resistencia_material / FS_GLOBAL
+        cs_final_d = val_paso2 / FS_GLOBAL
     else:
         cs_final_d = 0.0
     
-    # Truncado a 2 decimales visual
-    cs_final_d = round(cs_final_d, 2)
+    # Truncado a 2 decimales visual y efectivo
+    cs_final_d = float(int(cs_final_d * 100) / 100) # Truncado estricto (no redondeo)
     
-    # Visualización del resultado D en tiempo real
+    # Visualización del resultado D
     if cs_final_d > 0:
         c_res.markdown(f":green[**= {cs_final_d}**]")
     else:
@@ -135,7 +138,6 @@ datos_babor = []
 
 # --- ESTRIBOR ---
 with tab_stbd:
-    # Cabeceras
     cols = st.columns([2, 1.2, 0.8, 1, 1, 1, 1, 1])
     cols[0].write("Material"); cols[1].write("MSL"); cols[2].write("Unit"); cols[3].write("CS (D)"); 
     cols[4].write("Brazo C (E)"); cols[5].write("Alfa"); cols[6].write("Beta"); cols[7].write("Dir")
@@ -171,7 +173,6 @@ if st.button("🚀 Calcular Seguridad", type="primary"):
         # B) Trincas Estribor (Inyección Forzada de D)
         for t in datos_estribor:
             f = t['fila']
-            # Ojo: Inyectamos el valor calculado D directamente
             add(f"D{f}", t['D']) 
             add(f"E{f}", t['Brazo'])
             add(f"F{f}", t['F'])
@@ -243,25 +244,13 @@ if st.button("🚀 Calcular Seguridad", type="primary"):
             st.markdown("##### Fuerzas Babor (Br)")
             st.write(f"CS Br (D93): {get('D93'):.2f}")
             st.write(f"CS*fy Br (K99): {get('K99'):.2f}")
-            st.write(f"**CS*c Br (N99):** {get('N99'):.2f}")
-            # Se ha pedido N93 en la instrucción, pero N93 es una celda de trinca individual.
-            # Asumo que te referías a N99 (Total) o N93 (Individual).
-            # Aquí pongo N93 también por si acaso:
-            st.write(f"CS*c Indiv (N93): {get('N93'):.2f}")
+            # Corrección N93 solicitada:
+            st.write(f"**CS*c Br (N93):** {get('N93'):.2f}")
 
         st.markdown("##### Fuerzas Long y Vuelco")
         st.write(f"CS*fx Pr (D100): {get('D100'):.2f}")
         st.write(f"CS*fx Pp (G100): {get('G100'):.2f}")
         
-        # TABLA DE CHECK (Para ver si D se inyectó bien)
-        st.subheader("Check de Inyección D")
-        datos_check = []
-        for i, t in enumerate(datos_estribor):
-            datos_check.append({"Lado": "Estribor", "Fila": t['fila'], "D (Calc Python)": t['D'], "D (Leído Excel)": safe_float(get(f"D{t['fila']}"))})
-        for i, t in enumerate(datos_babor):
-            datos_check.append({"Lado": "Babor", "Fila": t['fila'], "D (Calc Python)": t['D'], "D (Leído Excel)": safe_float(get(f"D{t['fila']}"))})
-        st.dataframe(pd.DataFrame(datos_check), use_container_width=True)
-
     except Exception as e:
         st.error(f"Error detallado: {e}")
     
