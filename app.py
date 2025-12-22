@@ -4,12 +4,15 @@ import os
 import numpy as np
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Trincaje Pro", page_icon="⚓", layout="wide")
+st.set_page_config(page_title="Trincaje Pro v2", page_icon="⚓", layout="wide")
 st.title("⚓ Calculadora de Trincaje (Motor Avanzado)")
 
-# CONSTANTES
+# ==========================================
+# CAMBIO REALIZADO AQUÍ ABAJO
+# ==========================================
 NOMBRE_HOJA = "CALCULO"  
-ARCHIVO_EXCEL = "trincaje_alternativo_prueba01.xlsx"
+ARCHIVO_EXCEL = "trincaje_alternativo_prueba02.xlsx" # <--- ¡Nombre actualizado!
+# ==========================================
 
 # Nombres de los materiales correspondientes a las filas 64 a 71
 NOMBRES_MATERIALES = [
@@ -28,7 +31,7 @@ NOMBRES_MATERIALES = [
 def cargar_motor():
     if not os.path.exists(ARCHIVO_EXCEL):
         return None
-    # Compilamos el Excel para que entienda todas las fórmulas (SI.ERROR, etc.)
+    # Compilamos el Excel
     xl_model = formulas.ExcelModel().loads(ARCHIVO_EXCEL).finish()
     return xl_model
 
@@ -39,7 +42,7 @@ except Exception as e:
     st.stop()
 
 if not modelo:
-    st.error(f"⚠️ Error: No encuentro '{ARCHIVO_EXCEL}' en el repositorio.")
+    st.error(f"⚠️ Error: No encuentro '{ARCHIVO_EXCEL}' en el repositorio. Verifica que lo has subido con ese nombre exacto.")
     st.stop()
 
 # --- 2. INTERFAZ: DATOS GENERALES ---
@@ -72,103 +75,79 @@ with st.expander("🚢 1. Datos del Buque y Carga", expanded=True):
 
 # --- 3. RESISTENCIA DE MATERIALES (Cálculo Dinámico de K) ---
 with st.expander("🛠️ 2. Resistencia de Materiales (G64-H71)", expanded=True):
-    st.info("Introduce los valores. La lista de trincas se actualizará automáticamente con los resultados calculados aquí.")
+    st.info("Introduce los valores. La lista de trincas se actualizará automáticamente.")
     
-    # Diccionarios para almacenar inputs y opciones calculadas
     inputs_g_h = {}
-    
-    # Opción '0' por defecto siempre disponible
     valores_k_calculados = {"🚫 Sin Trinca (0.00 t)": 0.0}
     
     filas_mat = range(64, 72)
     cols_mat = st.columns(4)
     
-    # Bucle para crear los inputs de cada material
     for i, (nombre_mat, fila) in enumerate(zip(NOMBRES_MATERIALES, filas_mat)):
         with cols_mat[i % 4]:
             st.markdown(f"**{nombre_mat}**")
             val_g = st.number_input(f"Valor G{fila}", key=f"G{fila}", value=0.0)
             val_h = st.selectbox(f"Unidad H{fila}", ["Tm", "KN"], key=f"H{fila}")
             
-            # Guardamos para el Excel
             inputs_g_h[f"G{fila}"] = val_g
             inputs_g_h[f"H{fila}"] = val_h
             
-            # --- CÁLCULO EN TIEMPO REAL (Simulación de Columna K) ---
-            # Esto replica la fórmula de tu Excel para mostrartelo en pantalla
+            # Cálculo visual para el desplegable
             if val_h == "KN":
-                k_valor = val_g * 0.10197 # Factor de conversión estándar
+                k_valor = val_g * 0.10197 
             else:
                 k_valor = val_g
             
-            # Creamos la etiqueta para el desplegable: "Grillete -> 10.50 t"
             etiqueta = f"{nombre_mat.split('(')[0].strip()} ➡ {k_valor:.2f} t"
             valores_k_calculados[etiqueta] = k_valor
 
 # --- 4. CONFIGURACIÓN DE TRINCAS ---
 st.subheader("⛓️ 3. Configuración de Trincas")
-st.caption("Selecciona el material usando los valores calculados arriba (K64-K71).")
+st.caption("Selecciona el material usando los valores calculados arriba.")
 
-# Extraemos las etiquetas para el desplegable
 opciones_dropdown = list(valores_k_calculados.keys())
 
 tab_stbd, tab_port = st.tabs(["Estribor (Starboard)", "Babor (Portside)"])
 
-# Función auxiliar para crear filas de trincas
 def crear_fila_trinca(i, lado, fila_excel):
-    # Columnas: Material(B), Brazo(C/E), Alfa(F), Beta(G), Dir(H)
     c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 1.5, 1.5])
     
-    # 1. LISTA DESPLEGABLE CON VALORES K
     seleccion = c1.selectbox(
         f"Trinca #{i+1}", 
         opciones_dropdown, 
         key=f"{lado}_B{fila_excel}",
         label_visibility="collapsed"
     )
-    # Recuperamos el valor numérico oculto tras la etiqueta
     valor_k_real = valores_k_calculados[seleccion]
     
-    # 2. Resto de Inputs
     val_brazo = c2.number_input("Brazo", value=0.0, key=f"{lado}_Brazo{fila_excel}", label_visibility="collapsed")
     val_alfa = c3.number_input("Alfa", value=0.0, key=f"{lado}_Alfa{fila_excel}", label_visibility="collapsed")
     val_beta = c4.number_input("Beta", value=0.0, key=f"{lado}_Beta{fila_excel}", label_visibility="collapsed")
     val_dir = c5.selectbox("Dir", ["-", "Pr", "Pp"], key=f"{lado}_Dir{fila_excel}", label_visibility="collapsed")
     
     return {
-        "fila": fila_excel,
-        "B": valor_k_real, # <--- ENVIAMOS EL VALOR NUMÉRICO K
-        "Brazo": val_brazo,
-        "F": val_alfa,
-        "G": val_beta,
-        "H": val_dir
+        "fila": fila_excel, "B": valor_k_real, "Brazo": val_brazo, "F": val_alfa, "G": val_beta, "H": val_dir
     }
 
-# --- PESTAÑA ESTRIBOR ---
 inputs_estribor = []
 with tab_stbd:
-    # Cabecera
     cols = st.columns([3, 1.5, 1.5, 1.5, 1.5])
     cols[0].write("Material (Valor K)")
     cols[1].write("Brazo C (E)")
     cols[2].write("Ángulo α (F)")
     cols[3].write("Ángulo β (G)")
     cols[4].write("Dir (H)")
-    
     for i in range(6):
         inputs_estribor.append(crear_fila_trinca(i, "st", 86 + i))
 
-# --- PESTAÑA BABOR ---
 inputs_babor = []
 with tab_port:
-    # Cabecera
     cols = st.columns([3, 1.5, 1.5, 1.5, 1.5])
     cols[0].write("Material (Valor K)")
-    cols[1].write("Brazo C (C)") # Aquí es columna C
+    cols[1].write("Brazo C (C)")
     cols[2].write("Ángulo α (F)")
     cols[3].write("Ángulo β (G)")
     cols[4].write("Dir (H)")
-    
     for i in range(6):
         inputs_babor.append(crear_fila_trinca(i, "pt", 93 + i))
 
@@ -176,7 +155,6 @@ with tab_port:
 
 if st.button("🚀 Calcular Seguridad", type="primary"):
     
-    # Función helper para añadir al diccionario de inputs
     inputs_dict = {}
     def add(celda, valor):
         key = f"'[{ARCHIVO_EXCEL}]{NOMBRE_HOJA}'!{celda}"
@@ -190,35 +168,25 @@ if st.button("🚀 Calcular Seguridad", type="primary"):
         add("E67", e_masa); add("E68", e_friccion); add("E69", e_brazo_v)
         add("E70", e_brazo_br); add("E71", e_brazo_er)
 
-        # B) Materiales (G y H)
+        # B) Materiales
         for celda, valor in inputs_g_h.items():
             add(celda, valor)
 
-        # C) Trincas (Enviamos el VALOR K a la columna B)
+        # C) Trincas
         for t in inputs_estribor:
             f = t['fila']
-            add(f"B{f}", t['B'])   # Valor K
-            add(f"E{f}", t['Brazo']) # Brazo C (Columna E para estribor)
-            add(f"F{f}", t['F'])
-            add(f"G{f}", t['G'])
-            add(f"H{f}", t['H'])
+            add(f"B{f}", t['B']); add(f"E{f}", t['Brazo']); add(f"F{f}", t['F']); add(f"G{f}", t['G']); add(f"H{f}", t['H'])
             
         for t in inputs_babor:
             f = t['fila']
-            add(f"B{f}", t['B'])   # Valor K
-            add(f"C{f}", t['Brazo']) # Brazo C (Columna C para babor)
-            add(f"F{f}", t['F'])
-            add(f"G{f}", t['G'])
-            add(f"H{f}", t['H'])
+            add(f"B{f}", t['B']); add(f"C{f}", t['Brazo']); add(f"F{f}", t['F']); add(f"G{f}", t['G']); add(f"H{f}", t['H'])
 
         # --- EJECUCIÓN ---
         solution = modelo.calculate(inputs=inputs_dict)
 
-        # Helper robusto para sacar datos
         def get(celda):
             key = f"'[{ARCHIVO_EXCEL}]{NOMBRE_HOJA}'!{celda}"
             res = solution[key].value
-            # Manejo de errores y arrays de numpy
             if isinstance(res, Exception): return 0.0
             try: return float(res)
             except:
@@ -229,13 +197,10 @@ if st.button("🚀 Calcular Seguridad", type="primary"):
         st.divider()
         st.subheader("📊 Informe de Seguridad")
         
-        # Resultados Deslizamiento
         k104, l104 = get("K104"), get("L104")
         k105, l105 = get("K105"), get("L105")
         k106, l106 = get("K106"), get("L106")
         k107, l107 = get("K107"), get("L107")
-        
-        # Resultados Vuelco
         i109, k109 = get("I109"), get("K109")
         i110, k110 = get("I110"), get("K110")
         
