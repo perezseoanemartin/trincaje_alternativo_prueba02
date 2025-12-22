@@ -5,8 +5,8 @@ import os
 import numpy as np
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Trincaje Pro v6", page_icon="⚓", layout="wide")
-st.title("⚓ Calculadora de Trincaje (Lógica Independiente)")
+st.set_page_config(page_title="Trincaje Pro v7", page_icon="⚓", layout="wide")
+st.title("⚓ Calculadora de Trincaje (Completa)")
 
 # CONSTANTES
 NOMBRE_HOJA = "CALCULO"  
@@ -101,14 +101,12 @@ with st.expander("🛠️ 2. Resistencia de Materiales (MSL -> CS)", expanded=Tr
                 etiqueta_dropdown = f"{cs_resultado:.2f} ({nombre})"
                 opciones_calculadas[etiqueta_dropdown] = cs_resultado
 
-# --- 4. CONFIGURACIÓN DE TRINCAS (LÓGICA INDEPENDIENTE) ---
+# --- 4. CONFIGURACIÓN DE TRINCAS ---
 st.subheader("⛓️ 3. Configuración de Trincas")
 lista_opciones_trincas = list(opciones_calculadas.keys())
 tab_stbd, tab_port = st.tabs(["Estribor (Starboard)", "Babor (Portside)"])
 
-# ==========================================
-# LÓGICA ESTRIBOR (Filas 86-91)
-# ==========================================
+# ESTRIBOR
 inputs_estribor = []
 with tab_stbd:
     cols = st.columns([3, 1.5, 1.5, 1.5, 1.5])
@@ -118,7 +116,6 @@ with tab_stbd:
         fila_excel = 86 + i
         c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 1.5, 1.5])
         
-        # Inputs independientes para Estribor
         sel = c1.selectbox(f"Trinca #{i+1}", lista_opciones_trincas, key=f"st_Sel_{fila_excel}", label_visibility="collapsed")
         val_k = opciones_calculadas[sel]
         
@@ -131,9 +128,7 @@ with tab_stbd:
             "fila": fila_excel, "B": val_k, "Brazo": brazo, "F": alfa, "G": beta, "H": dire
         })
 
-# ==========================================
-# LÓGICA BABOR (Filas 93-98)
-# ==========================================
+# BABOR
 inputs_babor = []
 with tab_port:
     cols = st.columns([3, 1.5, 1.5, 1.5, 1.5])
@@ -143,11 +138,9 @@ with tab_port:
         fila_excel = 93 + i
         c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 1.5, 1.5])
         
-        # Inputs independientes para Babor (Keys únicas 'pt_')
         sel = c1.selectbox(f"Trinca #{i+1}", lista_opciones_trincas, key=f"pt_Sel_{fila_excel}", label_visibility="collapsed")
         val_k = opciones_calculadas[sel]
         
-        # OJO: Aquí el brazo irá a la columna C luego
         brazo = c2.number_input("Brazo", 0.0, key=f"pt_Brazo_{fila_excel}", label_visibility="collapsed")
         alfa = c3.number_input("Alfa", 0.0, key=f"pt_Alfa_{fila_excel}", label_visibility="collapsed")
         beta = c4.number_input("Beta", 0.0, key=f"pt_Beta_{fila_excel}", label_visibility="collapsed")
@@ -180,20 +173,12 @@ if st.button("🚀 Calcular y Verificar", type="primary"):
         # C) Inyección Estribor
         for t in inputs_estribor:
             f = t['fila']
-            add(f"B{f}", t['B'])    # CS Calculado
-            add(f"E{f}", t['Brazo'])# Columna E para Brazo Estribor
-            add(f"F{f}", t['F'])
-            add(f"G{f}", t['G'])
-            add(f"H{f}", t['H'])
+            add(f"B{f}", t['B']); add(f"E{f}", t['Brazo']); add(f"F{f}", t['F']); add(f"G{f}", t['G']); add(f"H{f}", t['H'])
 
         # D) Inyección Babor
         for t in inputs_babor:
             f = t['fila']
-            add(f"B{f}", t['B'])    # CS Calculado
-            add(f"C{f}", t['Brazo'])# Columna C para Brazo Babor (¡IMPORTANTE!)
-            add(f"F{f}", t['F'])
-            add(f"G{f}", t['G'])
-            add(f"H{f}", t['H'])
+            add(f"B{f}", t['B']); add(f"C{f}", t['Brazo']); add(f"F{f}", t['F']); add(f"G{f}", t['G']); add(f"H{f}", t['H'])
 
         # --- EJECUCIÓN ---
         solution = modelo.calculate(inputs=inputs_dict)
@@ -205,48 +190,58 @@ if st.button("🚀 Calcular y Verificar", type="primary"):
             try: return float(res)
             except:
                 try: return float(res.item())
-                except: return str(res) # Si devuelve texto (como "Pr")
+                except: return str(res)
 
-        # --- VISUALIZACIÓN ---
-        st.divider()
-        st.subheader("📊 Resultados Principales")
-        
-        col_res1, col_res2 = st.columns(2)
-        # Convertimos a float para comparaciones
+        # Helper para floats seguros
         def safe_float(v):
             try: return float(v)
             except: return 0.0
 
+        # --- VISUALIZACIÓN PRINCIPAL ---
+        st.divider()
+        st.subheader("📊 Resultados Principales")
+        
+        col_res1, col_res2, col_res3 = st.columns(3)
+        
         k104, l104 = safe_float(get("K104")), safe_float(get("L104"))
         k105, l105 = safe_float(get("K105")), safe_float(get("L105"))
+        k106, l106 = safe_float(get("K106")), safe_float(get("L106"))
+        k107, l107 = safe_float(get("K107")), safe_float(get("L107"))
         i109, k109 = safe_float(get("I109")), safe_float(get("K109"))
         i110, k110 = safe_float(get("I110")), safe_float(get("K110"))
         
         with col_res1:
-            st.metric("Desliz. Estribor", f"{k104:.2f} / {l104:.2f}", "OK" if k104 > l104 else "FALLO")
-            st.metric("Desliz. Babor", f"{k105:.2f} / {l105:.2f}", "OK" if k105 > l105 else "FALLO")
+            st.markdown("##### ↔️ Desliz. Transversal")
+            st.metric("Estribor", f"{k104:.2f} / {l104:.2f}", "OK" if k104 > l104 else "FALLO")
+            st.metric("Babor", f"{k105:.2f} / {l105:.2f}", "OK" if k105 > l105 else "FALLO")
+            
         with col_res2:
-            st.metric("Vuelco Estribor", f"{i109:.2f} / {k109:.2f}", "OK" if i109 > k109 else "FALLO")
-            st.metric("Vuelco Babor", f"{i110:.2f} / {k110:.2f}", "OK" if i110 > k110 else "FALLO")
+            st.markdown("##### ↕️ Desliz. Longitudinal")
+            st.metric("Proa", f"{k106:.2f} / {l106:.2f}", "OK" if k106 > l106 else "FALLO")
+            st.metric("Popa", f"{k107:.2f} / {l107:.2f}", "OK" if k107 > l107 else "FALLO")
+            
+        with col_res3:
+            st.markdown("##### 🔄 Vuelco")
+            st.metric("Estribor", f"{i109:.2f} / {k109:.2f}", "OK" if i109 > k109 else "FALLO")
+            st.metric("Babor", f"{i110:.2f} / {k110:.2f}", "OK" if i110 > k110 else "FALLO")
 
         # =========================================================
-        # PANEL DE CONTROL (CON COLUMNA H AÑADIDA)
+        # PANEL DE CONTROL EXTENDIDO
         # =========================================================
         st.divider()
         st.header("🔍 4. Panel de Control (Debug)")
         
-        tab_ctrl_trincas, tab_ctrl_fuerzas = st.tabs(["Detalle Trincas", "Fuerzas y Momentos"])
+        tab_ctrl_trincas, tab_ctrl_glob = st.tabs(["Detalle Trincas", "Variables Globales"])
         
         with tab_ctrl_trincas:
-            st.write("Valores individuales por trinca.")
-            
             # --- TABLA ESTRIBOR ---
             st.markdown("##### Estribor (Filas 86-91)")
             datos_stbd = []
             for r in range(86, 92):
                 datos_stbd.append({
                     "Fila": r,
-                    "Dir (H)": get(f"H{r}"), # <--- NUEVO
+                    "Input B (Enviado)": safe_float(get(f"B{r}")), # Verify input
+                    "Dir (H)": get(f"H{r}"),
                     "CS (D)": safe_float(get(f"D{r}")),
                     "fy (I)": safe_float(get(f"I{r}")),
                     "CS*fy (K)": safe_float(get(f"K{r}")),
@@ -262,7 +257,8 @@ if st.button("🚀 Calcular y Verificar", type="primary"):
             for r in range(93, 99):
                 datos_port.append({
                     "Fila": r,
-                    "Dir (H)": get(f"H{r}"), # <--- NUEVO
+                    "Input B (Enviado)": safe_float(get(f"B{r}")), # Verify input
+                    "Dir (H)": get(f"H{r}"),
                     "CS (D)": safe_float(get(f"D{r}")),
                     "fy (I)": safe_float(get(f"I{r}")),
                     "CS*fy (K)": safe_float(get(f"K{r}")),
@@ -272,17 +268,24 @@ if st.button("🚀 Calcular y Verificar", type="primary"):
                 })
             st.dataframe(pd.DataFrame(datos_port).set_index("Fila"), use_container_width=True)
 
-        with tab_ctrl_fuerzas:
-            st.markdown("##### Fuerzas Totales")
-            # Tabla Resumen
-            datos_fuerzas = [
-                {"Parámetro": "CS * fy (F104/F105)", "Estribor/Proa": safe_float(get("F104")), "Babor/Popa": safe_float(get("F105"))},
-                {"Parámetro": "fz (G106/G107)",      "Estribor/Proa": safe_float(get("G106")), "Babor/Popa": safe_float(get("G107"))},
-                {"Parámetro": "fx * FZ (H106/H107)", "Estribor/Proa": safe_float(get("H106")), "Babor/Popa": safe_float(get("H107"))},
-                {"Parámetro": "CS * fx (I106/I107)", "Estribor/Proa": safe_float(get("I106")), "Babor/Popa": safe_float(get("I107"))},
-                {"Parámetro": "CS (K104-K107)",      "Estribor/Proa": safe_float(get("K104")), "Babor/Popa": safe_float(get("K105"))},
+        with tab_ctrl_glob:
+            st.markdown("##### Variables de Control Solicitadas")
+            
+            # Creamos una tabla personalizada con todas las celdas pedidas
+            control_vars = [
+                {"Celda": "D100 (CS*fx Pr)", "Valor": safe_float(get("D100"))},
+                {"Celda": "G100 (CS*fx Pp)", "Valor": safe_float(get("G100"))},
+                {"Celda": "K104 (CS Lat Er)", "Valor": safe_float(get("K104"))},
+                {"Celda": "K105 (CS Lat Br)", "Valor": safe_float(get("K105"))},
+                {"Celda": "K106 (CS Long Pr)", "Valor": safe_float(get("K106"))},
+                {"Celda": "K107 (CS Long Pp)", "Valor": safe_float(get("K107"))},
+                {"Celda": "G109 (0.9*CS*c Er)", "Valor": safe_float(get("G109"))},
+                {"Celda": "I109 (CS Total Er)", "Valor": safe_float(get("I109"))},
+                {"Celda": "H110 (0.9*CS*c Br)", "Valor": safe_float(get("H110"))},
+                {"Celda": "I110 (CS Total Br)", "Valor": safe_float(get("I110"))},
             ]
-            st.dataframe(pd.DataFrame(datos_fuerzas), use_container_width=True)
+            
+            st.dataframe(pd.DataFrame(control_vars), use_container_width=True)
 
     except Exception as e:
         st.error(f"Error detallado: {e}")
