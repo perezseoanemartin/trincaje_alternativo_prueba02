@@ -1,12 +1,11 @@
 import streamlit as st
-import pandas as pd
 import formulas
 import os
 import numpy as np
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Trincaje Pro v7", page_icon="⚓", layout="wide")
-st.title("⚓ Calculadora de Trincaje (Completa)")
+st.set_page_config(page_title="Trincaje Pro Final", page_icon="⚓", layout="wide")
+st.title("⚓ Calculadora de Trincaje")
 
 # CONSTANTES
 NOMBRE_HOJA = "CALCULO"  
@@ -69,12 +68,12 @@ with st.expander("🚢 1. Datos del Buque y Carga", expanded=True):
     e_brazo_br = c_b2.number_input("Brazo Estab. Br (E70)", value=0.0)
     e_brazo_er = c_b3.number_input("Brazo Estab. Er (E71)", value=0.0)
 
-# --- 3. CÁLCULO DE RESISTENCIA (CS) ---
-with st.expander("🛠️ 2. Resistencia de Materiales (MSL -> CS)", expanded=True):
-    st.info("Introduce la Carga de Rotura (MSL).")
+# --- 3. RESISTENCIA DE MATERIALES ---
+with st.expander("🛠️ 2. Resistencia de Materiales", expanded=True):
+    st.info("Introduce los valores G y H.")
     
-    inputs_g_h = {}
-    opciones_calculadas = {"-": 0.0}
+    inputs_para_excel = {}
+    valores_k_disponibles = {"-": 0.0}
     
     cols_mat = st.columns(4)
     
@@ -85,74 +84,58 @@ with st.expander("🛠️ 2. Resistencia de Materiales (MSL -> CS)", expanded=Tr
         
         with cols_mat[i % 4]:
             st.markdown(f"**{nombre}**")
-            st.caption(f"x{factor}")
-            val_g = st.number_input(f"Val G{fila}", key=f"G{fila}", value=0.0)
-            val_h = st.selectbox(f"Und H{fila}", ["-", "Tm", "KN"], key=f"H{fila}", index=0)
+            val_g = st.number_input(f"G{fila}", key=f"G{fila}", value=0.0, step=0.1)
+            val_h = st.selectbox(f"H{fila}", ["-", "Tm", "KN"], key=f"H{fila}", index=0)
             
-            cs_resultado = 0.0
-            if val_h == "Tm": cs_resultado = val_g * 9.8 * factor
-            elif val_h == "KN": cs_resultado = val_g * factor
+            # Cálculo visual
+            k_calculado = 0.0
+            if val_h == "Tm":
+                k_calculado = val_g * factor * 9.8
+            elif val_h == "KN":
+                k_calculado = val_g * factor
             
-            inputs_g_h[f"G{fila}"] = val_g
-            inputs_g_h[f"H{fila}"] = val_h
-            
-            if cs_resultado > 0:
-                st.markdown(f":green[**= {cs_resultado:.2f} KN**]")
-                etiqueta_dropdown = f"{cs_resultado:.2f} ({nombre})"
-                opciones_calculadas[etiqueta_dropdown] = cs_resultado
+            if k_calculado > 0:
+                st.markdown(f":green[**= {k_calculado:.2f} KN**]")
+            else:
+                st.caption("= 0.00 KN")
+                
+            inputs_para_excel[f"G{fila}"] = val_g
+            inputs_para_excel[f"H{fila}"] = val_h
+            valores_k_disponibles[nombre] = k_calculado
 
 # --- 4. CONFIGURACIÓN DE TRINCAS ---
 st.subheader("⛓️ 3. Configuración de Trincas")
-lista_opciones_trincas = list(opciones_calculadas.keys())
+opciones_desplegable = ["-"] + [m["nombre"] for m in MAPA_MATERIALES]
+
 tab_stbd, tab_port = st.tabs(["Estribor (Starboard)", "Babor (Portside)"])
 
-# ESTRIBOR
+def fila_trinca(i, lado, fila_excel):
+    c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 1.5, 1.5])
+    
+    seleccion = c1.selectbox(f"Trinca #{i+1}", opciones_desplegable, key=f"{lado}_Mat_{fila_excel}", label_visibility="collapsed")
+    valor_a_inyectar_en_B = valores_k_disponibles.get(seleccion, 0.0)
+    
+    brazo = c2.number_input("Brazo", 0.0, key=f"{lado}_Brazo_{fila_excel}", label_visibility="collapsed")
+    alfa = c3.number_input("Alfa", 0.0, key=f"{lado}_Alfa_{fila_excel}", label_visibility="collapsed")
+    beta = c4.number_input("Beta", 0.0, key=f"{lado}_Beta_{fila_excel}", label_visibility="collapsed")
+    dire = c5.selectbox("Dir", ["-", "Pr", "Pp"], key=f"{lado}_Dir_{fila_excel}", label_visibility="collapsed")
+    
+    return {"fila": fila_excel, "B": valor_a_inyectar_en_B, "Brazo": brazo, "F": alfa, "G": beta, "H": dire}
+
 inputs_estribor = []
 with tab_stbd:
     cols = st.columns([3, 1.5, 1.5, 1.5, 1.5])
-    cols[0].write("CS Calc"); cols[1].write("Brazo C (E)"); cols[2].write("Alfa"); cols[3].write("Beta"); cols[4].write("Dir")
-    
-    for i in range(6):
-        fila_excel = 86 + i
-        c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 1.5, 1.5])
-        
-        sel = c1.selectbox(f"Trinca #{i+1}", lista_opciones_trincas, key=f"st_Sel_{fila_excel}", label_visibility="collapsed")
-        val_k = opciones_calculadas[sel]
-        
-        brazo = c2.number_input("Brazo", 0.0, key=f"st_Brazo_{fila_excel}", label_visibility="collapsed")
-        alfa = c3.number_input("Alfa", 0.0, key=f"st_Alfa_{fila_excel}", label_visibility="collapsed")
-        beta = c4.number_input("Beta", 0.0, key=f"st_Beta_{fila_excel}", label_visibility="collapsed")
-        dire = c5.selectbox("Dir", ["-", "Pr", "Pp"], key=f"st_Dir_{fila_excel}", label_visibility="collapsed")
-        
-        inputs_estribor.append({
-            "fila": fila_excel, "B": val_k, "Brazo": brazo, "F": alfa, "G": beta, "H": dire
-        })
+    cols[0].write("Material"); cols[1].write("Brazo C (E)"); cols[2].write("Alfa (F)"); cols[3].write("Beta (G)"); cols[4].write("Dir (H)")
+    for i in range(6): inputs_estribor.append(fila_trinca(i, "st", 86 + i))
 
-# BABOR
 inputs_babor = []
 with tab_port:
     cols = st.columns([3, 1.5, 1.5, 1.5, 1.5])
-    cols[0].write("CS Calc"); cols[1].write("Brazo C (C)"); cols[2].write("Alfa"); cols[3].write("Beta"); cols[4].write("Dir")
-    
-    for i in range(6):
-        fila_excel = 93 + i
-        c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 1.5, 1.5])
-        
-        sel = c1.selectbox(f"Trinca #{i+1}", lista_opciones_trincas, key=f"pt_Sel_{fila_excel}", label_visibility="collapsed")
-        val_k = opciones_calculadas[sel]
-        
-        brazo = c2.number_input("Brazo", 0.0, key=f"pt_Brazo_{fila_excel}", label_visibility="collapsed")
-        alfa = c3.number_input("Alfa", 0.0, key=f"pt_Alfa_{fila_excel}", label_visibility="collapsed")
-        beta = c4.number_input("Beta", 0.0, key=f"pt_Beta_{fila_excel}", label_visibility="collapsed")
-        dire = c5.selectbox("Dir", ["-", "Pr", "Pp"], key=f"pt_Dir_{fila_excel}", label_visibility="collapsed")
-        
-        inputs_babor.append({
-            "fila": fila_excel, "B": val_k, "Brazo": brazo, "F": alfa, "G": beta, "H": dire
-        })
+    cols[0].write("Material"); cols[1].write("Brazo C (C)"); cols[2].write("Alfa (F)"); cols[3].write("Beta (G)"); cols[4].write("Dir (H)")
+    for i in range(6): inputs_babor.append(fila_trinca(i, "pt", 93 + i))
 
-# --- 5. CÁLCULO Y CONTROL ---
-
-if st.button("🚀 Calcular y Verificar", type="primary"):
+# --- 5. CÁLCULO ---
+if st.button("🚀 Calcular Seguridad", type="primary"):
     
     inputs_dict = {}
     def add(celda, valor):
@@ -160,7 +143,7 @@ if st.button("🚀 Calcular y Verificar", type="primary"):
         inputs_dict[key] = valor
 
     try:
-        # A) Inyección Datos Generales
+        # A) Inyección
         add("C64", c_eslora); add("C65", c_velocidad); add("C67", c_corr)
         add("C69", c_ax); add("C70", c_ay); add("C71", c_az)
         add("E64", e_eslora); add("E65", e_manga); add("E66", e_altura)
@@ -168,14 +151,12 @@ if st.button("🚀 Calcular y Verificar", type="primary"):
         add("E70", e_brazo_br); add("E71", e_brazo_er)
 
         # B) Materiales
-        for celda, valor in inputs_g_h.items(): add(celda, valor)
+        for celda, valor in inputs_para_excel.items(): add(celda, valor)
 
-        # C) Inyección Estribor
+        # C) Trincas
         for t in inputs_estribor:
             f = t['fila']
             add(f"B{f}", t['B']); add(f"E{f}", t['Brazo']); add(f"F{f}", t['F']); add(f"G{f}", t['G']); add(f"H{f}", t['H'])
-
-        # D) Inyección Babor
         for t in inputs_babor:
             f = t['fila']
             add(f"B{f}", t['B']); add(f"C{f}", t['Brazo']); add(f"F{f}", t['F']); add(f"G{f}", t['G']); add(f"H{f}", t['H'])
@@ -190,16 +171,15 @@ if st.button("🚀 Calcular y Verificar", type="primary"):
             try: return float(res)
             except:
                 try: return float(res.item())
-                except: return str(res)
+                except: return 0.0
 
-        # Helper para floats seguros
         def safe_float(v):
             try: return float(v)
             except: return 0.0
 
-        # --- VISUALIZACIÓN PRINCIPAL ---
+        # --- RESULTADOS PRINCIPALES ---
         st.divider()
-        st.subheader("📊 Resultados Principales")
+        st.subheader("📊 Resultados de Seguridad")
         
         col_res1, col_res2, col_res3 = st.columns(3)
         
@@ -214,78 +194,40 @@ if st.button("🚀 Calcular y Verificar", type="primary"):
             st.markdown("##### ↔️ Desliz. Transversal")
             st.metric("Estribor", f"{k104:.2f} / {l104:.2f}", "OK" if k104 > l104 else "FALLO")
             st.metric("Babor", f"{k105:.2f} / {l105:.2f}", "OK" if k105 > l105 else "FALLO")
-            
         with col_res2:
             st.markdown("##### ↕️ Desliz. Longitudinal")
             st.metric("Proa", f"{k106:.2f} / {l106:.2f}", "OK" if k106 > l106 else "FALLO")
             st.metric("Popa", f"{k107:.2f} / {l107:.2f}", "OK" if k107 > l107 else "FALLO")
-            
         with col_res3:
             st.markdown("##### 🔄 Vuelco")
             st.metric("Estribor", f"{i109:.2f} / {k109:.2f}", "OK" if i109 > k109 else "FALLO")
             st.metric("Babor", f"{i110:.2f} / {k110:.2f}", "OK" if i110 > k110 else "FALLO")
 
         # =========================================================
-        # PANEL DE CONTROL EXTENDIDO
+        # NUEVO APARTADO: PANEL DE CONTROL SOLICITADO
         # =========================================================
         st.divider()
-        st.header("🔍 4. Panel de Control (Debug)")
+        st.header("🔍 4. Panel de Control")
         
-        tab_ctrl_trincas, tab_ctrl_glob = st.tabs(["Detalle Trincas", "Variables Globales"])
+        c_ctrl1, c_ctrl2 = st.columns(2)
         
-        with tab_ctrl_trincas:
-            # --- TABLA ESTRIBOR ---
-            st.markdown("##### Estribor (Filas 86-91)")
-            datos_stbd = []
-            for r in range(86, 92):
-                datos_stbd.append({
-                    "Fila": r,
-                    "Input B (Enviado)": safe_float(get(f"B{r}")), # Verify input
-                    "Dir (H)": get(f"H{r}"),
-                    "CS (D)": safe_float(get(f"D{r}")),
-                    "fy (I)": safe_float(get(f"I{r}")),
-                    "CS*fy (K)": safe_float(get(f"K{r}")),
-                    "fx (L)": safe_float(get(f"L{r}")),
-                    "CS*fx (M)": safe_float(get(f"M{r}")),
-                    "CS*c (N)": safe_float(get(f"N{r}"))
-                })
-            st.dataframe(pd.DataFrame(datos_stbd).set_index("Fila"), use_container_width=True)
+        with c_ctrl1:
+            st.markdown("##### Fuerzas de Estribor (Er)")
+            st.write(f"**CS Er (D86):** {get('D86'):.2f}")
+            st.write(f"**CS*fy Er (K92):** {get('K92'):.2f}")
+            st.write(f"**CS*c Er (N92):** {get('N92'):.2f}")
             
-            # --- TABLA BABOR ---
-            st.markdown("##### Babor (Filas 93-98)")
-            datos_port = []
-            for r in range(93, 99):
-                datos_port.append({
-                    "Fila": r,
-                    "Input B (Enviado)": safe_float(get(f"B{r}")), # Verify input
-                    "Dir (H)": get(f"H{r}"),
-                    "CS (D)": safe_float(get(f"D{r}")),
-                    "fy (I)": safe_float(get(f"I{r}")),
-                    "CS*fy (K)": safe_float(get(f"K{r}")),
-                    "fx (L)": safe_float(get(f"L{r}")),
-                    "CS*fx (M)": safe_float(get(f"M{r}")),
-                    "CS*c (N)": safe_float(get(f"N{r}"))
-                })
-            st.dataframe(pd.DataFrame(datos_port).set_index("Fila"), use_container_width=True)
+        with c_ctrl2:
+            st.markdown("##### Fuerzas de Babor (Br)")
+            st.write(f"**CS Br (D93):** {get('D93'):.2f}")
+            st.write(f"**CS*fy Br (K99):** {get('K99'):.2f}")
+            st.write(f"**CS*c Br (N99):** {get('N99'):.2f}")
 
-        with tab_ctrl_glob:
-            st.markdown("##### Variables de Control Solicitadas")
-            
-            # Creamos una tabla personalizada con todas las celdas pedidas
-            control_vars = [
-                {"Celda": "D100 (CS*fx Pr)", "Valor": safe_float(get("D100"))},
-                {"Celda": "G100 (CS*fx Pp)", "Valor": safe_float(get("G100"))},
-                {"Celda": "K104 (CS Lat Er)", "Valor": safe_float(get("K104"))},
-                {"Celda": "K105 (CS Lat Br)", "Valor": safe_float(get("K105"))},
-                {"Celda": "K106 (CS Long Pr)", "Valor": safe_float(get("K106"))},
-                {"Celda": "K107 (CS Long Pp)", "Valor": safe_float(get("K107"))},
-                {"Celda": "G109 (0.9*CS*c Er)", "Valor": safe_float(get("G109"))},
-                {"Celda": "I109 (CS Total Er)", "Valor": safe_float(get("I109"))},
-                {"Celda": "H110 (0.9*CS*c Br)", "Valor": safe_float(get("H110"))},
-                {"Celda": "I110 (CS Total Br)", "Valor": safe_float(get("I110"))},
-            ]
-            
-            st.dataframe(pd.DataFrame(control_vars), use_container_width=True)
+        st.markdown("##### Fuerzas Longitudinales")
+        c_long1, c_long2 = st.columns(2)
+        c_long1.metric("CS*fx Proa (D100)", f"{get('D100'):.2f}")
+        c_long2.metric("CS*fx Popa (G100)", f"{get('G100'):.2f}")
 
     except Exception as e:
         st.error(f"Error detallado: {e}")
+    
