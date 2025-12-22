@@ -4,24 +4,24 @@ import os
 import numpy as np
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Trincaje Pro v3", page_icon="⚓", layout="wide")
-st.title("⚓ Calculadora de Trincaje (Motor Avanzado)")
+st.set_page_config(page_title="Trincaje Pro v4", page_icon="⚓", layout="wide")
+st.title("⚓ Calculadora de Trincaje (Cálculo CS Automático)")
 
 # CONSTANTES
 NOMBRE_HOJA = "CALCULO"  
-ARCHIVO_EXCEL = "trincaje_alternativo_prueba02.xlsx" # Asegúrate que este es el nombre correcto
+ARCHIVO_EXCEL = "trincaje_alternativo_prueba02.xlsx"
 
-# Definimos la relación exacta: Nombre -> Fila de Origen (K)
-# Esto asegura que "Grillete" siempre tome el dato de la fila 64, etc.
+# DEFINICIÓN DE MATERIALES Y SUS FACTORES DE SEGURIDAD (USER DEFINED)
+# Estructura: Nombre, Fila Excel, Factor Multiplicador
 MAPA_MATERIALES = [
-    {"nombre": "Grillete/Tensor", "fila": 64}, 
-    {"nombre": "Cabo Fibra",      "fila": 65}, 
-    {"nombre": "Cable 1 uso",     "fila": 66}, 
-    {"nombre": "Cable Reutiliz.", "fila": 67}, 
-    {"nombre": "Fleje acero",     "fila": 68}, 
-    {"nombre": "Cincha",          "fila": 69}, 
-    {"nombre": "Bulldog Grip",    "fila": 70}, 
-    {"nombre": "Madera",          "fila": 71}
+    {"nombre": "Grillete/Tensor",    "fila": 64, "factor": 0.5}, 
+    {"nombre": "Cabo Fibra",         "fila": 65, "factor": 0.33}, 
+    {"nombre": "Cable 1 uso",        "fila": 66, "factor": 0.8}, 
+    {"nombre": "Cable Reutiliz.",    "fila": 67, "factor": 0.3}, 
+    {"nombre": "Fleje acero",        "fila": 68, "factor": 0.7}, 
+    {"nombre": "Cincha",             "fila": 69, "factor": 0.5}, 
+    {"nombre": "Bulldog Grip",       "fila": 70, "factor": 0.7}, 
+    {"nombre": "Madera",             "fila": 71, "factor": 0.3}
 ]
 
 # --- 1. CARGA DEL MOTOR ---
@@ -69,87 +69,104 @@ with st.expander("🚢 1. Datos del Buque y Carga", expanded=True):
     e_brazo_br = c_b2.number_input("Brazo Estab. Br (E70)", value=0.0)
     e_brazo_er = c_b3.number_input("Brazo Estab. Er (E71)", value=0.0)
 
-# --- 3. RESISTENCIA DE MATERIALES (Cálculo de valores K) ---
-with st.expander("🛠️ 2. Resistencia de Materiales (G64-H71)", expanded=True):
-    st.info("Introduce los valores G y H. La App calculará la resistencia K para usarla en las trincas.")
+# --- 3. CÁLCULO DE RESISTENCIA (CS) ---
+with st.expander("🛠️ 2. Resistencia de Materiales (MSL -> CS)", expanded=True):
+    st.info("Introduce la Carga de Rotura (MSL). La App calculará la Fuerza Eficaz (CS) aplicando los factores.")
     
-    # Aquí guardaremos los inputs para Excel y también los valores calculados de K
+    # Aquí guardamos los inputs para Excel y los valores calculados para el desplegable
     inputs_g_h = {}
-    valores_k_mapa = {} # Diccionario: "Nombre Material" -> Valor Numérico K
+    
+    # Diccionario para el desplegable de trincas: "Etiqueta Visual" -> Valor Numérico
+    # Inicializamos con la opción vacía
+    opciones_calculadas = {"-": 0.0}
     
     cols_mat = st.columns(4)
     
     for i, item in enumerate(MAPA_MATERIALES):
         nombre = item["nombre"]
         fila = item["fila"]
+        factor = item["factor"]
         
         with cols_mat[i % 4]:
             st.markdown(f"**{nombre}**")
-            val_g = st.number_input(f"Valor G{fila}", key=f"G{fila}", value=0.0)
-            val_h = st.selectbox(f"Unidad H{fila}", ["Tm", "KN"], key=f"H{fila}")
+            st.caption(f"Factor: x{factor}")
             
-            # 1. Guardamos los inputs crudos para enviarlos al Excel (por si acaso)
+            val_g = st.number_input(f"Valor G{fila}", key=f"G{fila}", value=0.0)
+            
+            # UNIDAD: Por defecto "-", y opciones Tm y KN
+            val_h = st.selectbox(f"Unidad H{fila}", ["-", "Tm", "KN"], key=f"H{fila}", index=0)
+            
+            # --- LÓGICA MATEMÁTICA PEDIDA ---
+            cs_resultado = 0.0
+            
+            if val_h == "-":
+                cs_resultado = 0.0
+            
+            elif val_h == "Tm":
+                # Tm * 9.8 * Factor
+                cs_resultado = val_g * 9.8 * factor
+            
+            elif val_h == "KN":
+                # KN * Factor
+                cs_resultado = val_g * factor
+            
+            # Guardamos inputs para enviar al Excel (G y H)
             inputs_g_h[f"G{fila}"] = val_g
             inputs_g_h[f"H{fila}"] = val_h
             
-            # 2. CALCULAMOS K AQUÍ MISMO (Lógica Python)
-            # Si es KN, multiplicamos por 0.10197 para pasar a Toneladas. Si es Tm, se queda igual.
-            if val_h == "KN":
-                k_calculado = val_g * 0.10197
-            else:
-                k_calculado = val_g
-            
-            # Guardamos este valor asociado al nombre del material
-            valores_k_mapa[nombre] = k_calculado
-            
-            # Mostramos pequeño feedback visual
-            st.caption(f"K{fila} = {k_calculado:.2f} t")
+            # Mostramos el resultado calculado en verde
+            if cs_resultado > 0:
+                st.markdown(f":green[**= {cs_resultado:.2f} KN**]")
+                # Añadimos a la lista de opciones para las trincas
+                # Formato: "12.50 (Grillete)"
+                etiqueta_dropdown = f"{cs_resultado:.2f} ({nombre})"
+                opciones_calculadas[etiqueta_dropdown] = cs_resultado
 
 # --- 4. CONFIGURACIÓN DE TRINCAS ---
 st.subheader("⛓️ 3. Configuración de Trincas")
+st.caption("Selecciona el valor calculado (CS) en el paso anterior.")
 
-# Preparamos las opciones para el desplegable
-lista_opciones = ["-"] + [m["nombre"] for m in MAPA_MATERIALES]
+# Lista de opciones para el selectbox (convertimos las claves del diccionario a lista)
+lista_opciones_trincas = list(opciones_calculadas.keys())
 
 tab_stbd, tab_port = st.tabs(["Estribor", "Babor"])
 
 def crear_fila_trinca(i, lado, fila_excel):
     c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 1.5, 1.5])
     
-    # SELECTOR DE MATERIAL
-    seleccion_nombre = c1.selectbox(
+    # 1. SELECTOR DE VALOR CALCULADO
+    seleccion = c1.selectbox(
         f"Trinca #{i+1}", 
-        lista_opciones, 
+        lista_opciones_trincas, 
         key=f"{lado}_Sel_{fila_excel}",
         label_visibility="collapsed"
     )
     
-    # LÓGICA CLAVE: Si selecciona un nombre, cogemos su valor K calculado. Si es "-", es 0.
-    if seleccion_nombre == "-":
-        valor_a_enviar = 0.0
-    else:
-        valor_a_enviar = valores_k_mapa[seleccion_nombre]
+    # Obtenemos el valor numérico real asociado a la selección
+    valor_a_enviar = opciones_calculadas[seleccion]
     
-    # Resto de inputs
+    # 2. RESTO DE INPUTS
     val_brazo = c2.number_input("Brazo", value=0.0, key=f"{lado}_Brazo{fila_excel}", label_visibility="collapsed")
     val_alfa = c3.number_input("Alfa", value=0.0, key=f"{lado}_Alfa{fila_excel}", label_visibility="collapsed")
     val_beta = c4.number_input("Beta", value=0.0, key=f"{lado}_Beta{fila_excel}", label_visibility="collapsed")
+    
+    # 3. DIRECCIÓN (Ahora enviamos Pr, Pp o -)
     val_dir = c5.selectbox("Dir", ["-", "Pr", "Pp"], key=f"{lado}_Dir{fila_excel}", label_visibility="collapsed")
     
     return {
         "fila": fila_excel,
-        "B": valor_a_enviar, # <--- AQUÍ VA EL VALOR K (NUMÉRICO)
+        "B": valor_a_enviar, # Enviamos el número calculado (ej: 45.3)
         "Brazo": val_brazo,
         "F": val_alfa,
         "G": val_beta,
-        "H": val_dir
+        "H": val_dir         # Enviamos el texto "-" / "Pr" / "Pp"
     }
 
 # --- PESTAÑA ESTRIBOR ---
 inputs_estribor = []
 with tab_stbd:
     cols = st.columns([3, 1.5, 1.5, 1.5, 1.5])
-    cols[0].write("Material (Selección)")
+    cols[0].write("CS Calculado (KN)")
     cols[1].write("Brazo C (E)")
     cols[2].write("Ángulo α (F)")
     cols[3].write("Ángulo β (G)")
@@ -161,7 +178,7 @@ with tab_stbd:
 inputs_babor = []
 with tab_port:
     cols = st.columns([3, 1.5, 1.5, 1.5, 1.5])
-    cols[0].write("Material (Selección)")
+    cols[0].write("CS Calculado (KN)")
     cols[1].write("Brazo C (C)")
     cols[2].write("Ángulo α (F)")
     cols[3].write("Ángulo β (G)")
@@ -186,20 +203,26 @@ if st.button("🚀 Calcular Seguridad", type="primary"):
         add("E67", e_masa); add("E68", e_friccion); add("E69", e_brazo_v)
         add("E70", e_brazo_br); add("E71", e_brazo_er)
 
-        # B) Materiales (Inputs G y H)
+        # B) Materiales (Inputs G y H originales)
         for celda, valor in inputs_g_h.items():
             add(celda, valor)
 
-        # C) Trincas (Inyectamos el VALOR K NUMÉRICO en la columna B)
+        # C) Trincas
         for t in inputs_estribor:
             f = t['fila']
-            add(f"B{f}", t['B'])   # Esto lleva el valor K64, K65... o 0
-            add(f"E{f}", t['Brazo']); add(f"F{f}", t['F']); add(f"G{f}", t['G']); add(f"H{f}", t['H'])
+            add(f"B{f}", t['B'])   # Valor numérico CS
+            add(f"E{f}", t['Brazo'])
+            add(f"F{f}", t['F'])
+            add(f"G{f}", t['G'])
+            add(f"H{f}", t['H'])   # Texto Dir
             
         for t in inputs_babor:
             f = t['fila']
-            add(f"B{f}", t['B'])   # Esto lleva el valor K64, K65... o 0
-            add(f"C{f}", t['Brazo']); add(f"F{f}", t['F']); add(f"G{f}", t['G']); add(f"H{f}", t['H'])
+            add(f"B{f}", t['B'])   # Valor numérico CS
+            add(f"C{f}", t['Brazo'])
+            add(f"F{f}", t['F'])
+            add(f"G{f}", t['G'])
+            add(f"H{f}", t['H'])   # Texto Dir
 
         # --- EJECUCIÓN ---
         solution = modelo.calculate(inputs=inputs_dict)
