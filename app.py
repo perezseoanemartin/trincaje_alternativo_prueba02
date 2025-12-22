@@ -6,7 +6,7 @@ import pandas as pd
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Trincaje Pro Final", page_icon="⚓", layout="wide")
-st.title("⚓ Calculadora de Trincaje (Fórmula Corregida)")
+st.title("⚓ Calculadora de Trincaje (Corrección Definitiva Brazo E)")
 
 # CONSTANTES
 NOMBRE_HOJA = "CALCULO"  
@@ -72,53 +72,43 @@ with st.expander("🚢 1. Datos del Buque y Carga", expanded=True):
 # --- 3. CONFIGURACIÓN DE TRINCAS ---
 st.subheader("⛓️ 3. Configuración de Trincas")
 
-# Factor de seguridad global editable
 col_fs, _ = st.columns([1, 3])
-FS_GLOBAL = col_fs.number_input("Factor de Seguridad (Divisor Final)", value=1.35, step=0.05)
+FS_GLOBAL = col_fs.number_input("Factor de Seguridad (Divisor)", value=1.35, step=0.05)
 
 tab_stbd, tab_port = st.tabs(["Estribor (Starboard)", "Babor (Portside)"])
 
-# Función para generar la fila de inputs y calcular D al vuelo
 def fila_trinca_completa(i, lado, fila_excel):
     # Layout ancho
     c_mat, c_val, c_uni, c_res, c_geo1, c_geo2, c_geo3, c_dir = st.columns([2, 1.2, 0.8, 1, 1, 1, 1, 1])
     
-    # 1. Material
+    # Material
     material = c_mat.selectbox(f"Trinca #{i+1}", list(FACTORES_MATERIAL.keys()), key=f"{lado}_mat_{fila_excel}", label_visibility="collapsed")
     factor_mat = FACTORES_MATERIAL[material]
     
-    # 2. Valor Input
+    # Input Valor
     valor_input = c_val.number_input("Valor", value=0.0, key=f"{lado}_val_{fila_excel}", label_visibility="collapsed")
     
-    # 3. Unidad
+    # Input Unidad
     unidad = c_uni.selectbox("Uni", ["Tm", "KN"], key=f"{lado}_uni_{fila_excel}", label_visibility="collapsed")
     
-    # --- CÁLCULO DE PYTHON CORREGIDO ---
-    # Paso 1: Conversión de unidades (9.81 exacto)
-    if unidad == "Tm":
-        val_paso1 = valor_input * 9.81
-    else:
-        val_paso1 = valor_input * 1.0
-    
-    # Paso 2: Aplicar factor del material
+    # --- CÁLCULO DE PYTHON ---
+    val_paso1 = valor_input * 9.81 if unidad == "Tm" else valor_input
     val_paso2 = val_paso1 * factor_mat
     
-    # Paso 3: Dividir por Factor de Seguridad (FS)
     if FS_GLOBAL > 0:
         cs_final_d = val_paso2 / FS_GLOBAL
     else:
         cs_final_d = 0.0
     
-    # Truncado a 2 decimales visual y efectivo
-    cs_final_d = float(int(cs_final_d * 100) / 100) # Truncado estricto (no redondeo)
+    # Truncado a 2 decimales
+    cs_final_d = float(int(cs_final_d * 100) / 100)
     
-    # Visualización del resultado D
     if cs_final_d > 0:
         c_res.markdown(f":green[**= {cs_final_d}**]")
     else:
         c_res.caption("= 0.0")
 
-    # 4. Geometría
+    # Geometría
     brazo = c_geo1.number_input("Brazo", 0.0, key=f"{lado}_brazo_{fila_excel}", label_visibility="collapsed")
     alfa = c_geo2.number_input("Alfa", 0.0, key=f"{lado}_alfa_{fila_excel}", label_visibility="collapsed")
     beta = c_geo3.number_input("Beta", 0.0, key=f"{lado}_beta_{fila_excel}", label_visibility="collapsed")
@@ -126,7 +116,7 @@ def fila_trinca_completa(i, lado, fila_excel):
     
     return {
         "fila": fila_excel,
-        "D": cs_final_d, # VALOR CALCULADO A INYECTAR
+        "D": cs_final_d,
         "Brazo": brazo,
         "F": alfa,
         "G": beta,
@@ -149,7 +139,8 @@ with tab_stbd:
 with tab_port:
     cols = st.columns([2, 1.2, 0.8, 1, 1, 1, 1, 1])
     cols[0].write("Material"); cols[1].write("MSL"); cols[2].write("Unit"); cols[3].write("CS (D)"); 
-    cols[4].write("Brazo C (C)"); cols[5].write("Alfa"); cols[6].write("Beta"); cols[7].write("Dir")
+    cols[4].write("Brazo C (E)"); # <--- AHORA VA A COLUMNA E
+    cols[5].write("Alfa"); cols[6].write("Beta"); cols[7].write("Dir")
     
     for i in range(6):
         datos_babor.append(fila_trinca_completa(i, "pt", 93 + i))
@@ -170,7 +161,7 @@ if st.button("🚀 Calcular Seguridad", type="primary"):
         add("E67", e_masa); add("E68", e_friccion); add("E69", e_brazo_v)
         add("E70", e_brazo_br); add("E71", e_brazo_er)
 
-        # B) Trincas Estribor (Inyección Forzada de D)
+        # B) Trincas Estribor (Columna E para Brazo)
         for t in datos_estribor:
             f = t['fila']
             add(f"D{f}", t['D']) 
@@ -179,11 +170,11 @@ if st.button("🚀 Calcular Seguridad", type="primary"):
             add(f"G{f}", t['G'])
             add(f"H{f}", t['H'])
 
-        # C) Trincas Babor (Inyección Forzada de D)
+        # C) Trincas Babor (Columna E para Brazo - CORREGIDO)
         for t in datos_babor:
             f = t['fila']
             add(f"D{f}", t['D']) 
-            add(f"C{f}", t['Brazo']) # Brazo Babor -> Columna C
+            add(f"E{f}", t['Brazo']) # <--- AQUÍ ESTÁ EL CAMBIO CLAVE (Columna E)
             add(f"F{f}", t['F'])
             add(f"G{f}", t['G'])
             add(f"H{f}", t['H'])
@@ -199,7 +190,7 @@ if st.button("🚀 Calcular Seguridad", type="primary"):
             except:
                 try: return float(res.item())
                 except: return 0.0
-
+        
         def safe_float(v):
             try: return float(v)
             except: return 0.0
@@ -244,8 +235,8 @@ if st.button("🚀 Calcular Seguridad", type="primary"):
             st.markdown("##### Fuerzas Babor (Br)")
             st.write(f"CS Br (D93): {get('D93'):.2f}")
             st.write(f"CS*fy Br (K99): {get('K99'):.2f}")
-            # Corrección N93 solicitada:
-            st.write(f"**CS*c Br (N93):** {get('N93'):.2f}")
+            # Verificación clave: N93 ahora debería tener valor
+            st.write(f"**CS*c Br (N93):** {get('N93'):.2f}") 
 
         st.markdown("##### Fuerzas Long y Vuelco")
         st.write(f"CS*fx Pr (D100): {get('D100'):.2f}")
